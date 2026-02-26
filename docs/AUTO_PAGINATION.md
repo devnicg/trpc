@@ -2,7 +2,7 @@
 
 ## Overview
 
-This tRPC client now supports automatic cursor-based pagination for endpoints that return paginated results. This allows you to easily iterate through all pages of data without manually managing cursors.
+The WarEra API client supports automatic cursor-based pagination for endpoints that return paginated results. This allows you to easily iterate through all pages of data without manually managing cursors.
 
 ## Supported Endpoints
 
@@ -21,72 +21,62 @@ The following 8 endpoints support auto-pagination:
 
 ### Basic Auto-Pagination
 
-To enable auto-pagination, add `autoPaginate: true` to your request:
+To enable auto-pagination, add `auto_paginate=True` to your request:
 
-```typescript
-import { createAPIClient } from "@wareraprojects/api";
+```python
+import asyncio
+from warera_api import create_api_client
 
-const client = createAPIClient({
-  url: "https://api2.warera.net/trpc",
-  apiKey: "your-api-key" // optional
-});
+async def main():
+    async with create_api_client(api_key="your-api-key") as client:
+        async for page in await client.article.getArticlesPaginated(
+            type="last",
+            limit=20,
+            auto_paginate=True,
+            max_pages=20,
+        ):
+            print(f"Received {len(page.items)} articles")
+            for article in page.items:
+                print(article["title"])
+            print(f"Cursor: {page.cursor}")
 
-// Iterate through 20 pages
-for await (const page of client.article.getArticlesPaginated({
-  type: "last",
-  limit: 20,
-  autoPaginate: true.
-  maxPages: 20
-})) {
-  console.log(`Received ${page.items.length} articles`);
-  
-  // Process items
-  page.items.forEach(article => {
-    console.log(article.title);
-  });
-  
-  // page.cursor contains the cursor for this page
-  console.log(`Cursor: ${page.cursor}`);
-}
+asyncio.run(main())
 ```
 
 ### Options
 
-#### `autoPaginate: boolean`
+#### `auto_paginate: bool`
 
-When set to `true`, the client returns an `AsyncIterableIterator` that yields pages until all data is retrieved.
+When set to `True`, the client returns an async iterator that yields pages until all data is retrieved.
 
-```typescript
-{
-  autoPaginate: true
-}
+```python
+await client.article.getArticlesPaginated(auto_paginate=True)
 ```
 
-#### `maxPages?: number`
+#### `max_pages: int | None`
 
 Limit the maximum number of pages to retrieve. Useful to prevent runaway pagination or for testing.
 
-```typescript
-{
-  autoPaginate: true,
-  maxPages: 5  // Stop after 5 pages
-}
+```python
+await client.article.getArticlesPaginated(auto_paginate=True, max_pages=5)
 ```
 
-**Default**: `Infinity` (no limit)
+**Default**: `None` (no limit)
 
-#### `cursorEnd?: Date`
+#### `cursor_end: datetime | None`
 
 Stop pagination when the cursor date becomes older than this date. The cursor format includes a timestamp that is parsed and compared.
 
-```typescript
-{
-  autoPaginate: true,
-  cursorEnd: new Date("2026-02-15")  // Stop when cursor is before this date
-}
+```python
+from datetime import datetime
+
+await client.article.getArticlesPaginated(
+    auto_paginate=True,
+    cursor_end=datetime(2026, 2, 15),
+)
 ```
 
-**Default**: `undefined` (no date filtering)
+**Default**: `None` (no date filtering)
 
 **Note**: Cursors have the format `"{date}|{id}"`. The date portion is extracted and parsed for comparison.
 
@@ -94,23 +84,23 @@ Stop pagination when the cursor date becomes older than this date. The cursor fo
 
 ### With Auto-Pagination
 
-When `autoPaginate: true`, the function returns an `AsyncIterableIterator<PageResult<K>>`:
+When `auto_paginate=True`, the call returns an `AsyncIterator[PageResult]`:
 
-```typescript
-type PageResult<K> = {
-  items: T[];      // Array of items for this page
-  cursor: string;  // The cursor that was used to fetch the next page
-};
+```python
+@dataclass
+class PageResult:
+    items: list[Any]   # Items for this page
+    cursor: str        # Cursor for the next page (empty string when exhausted)
 ```
 
 ### Without Auto-Pagination (Regular Call)
 
-Without `autoPaginate`, the function returns a `Promise` with the regular response:
+Without `auto_paginate`, the call returns the raw JSON response:
 
-```typescript
+```python
 {
-  items: T[];
-  nextCursor: string;
+    "items": [...],
+    "nextCursor": "..."
 }
 ```
 
@@ -118,96 +108,52 @@ Without `autoPaginate`, the function returns a `Promise` with the regular respon
 
 ### Example 1: Collect All Items
 
-```typescript
-const client = createAPIClient({ url: "..." });
+```python
+async with create_api_client() as client:
+    all_battles = []
+    async for page in await client.battle.getBattles(
+        auto_paginate=True, max_pages=10, limit=50
+    ):
+        all_battles.extend(page.items)
 
-const allBattles: Battle[] = [];
-
-for await (const page of client.battle.getBattles({
-  autoPaginate: true,
-  maxPages: 10,
-  limit: 50
-})) {
-  allBattles.push(...page.items);
-}
-
-console.log(`Total battles: ${allBattles.length}`);
+    print(f"Total battles: {len(all_battles)}")
 ```
 
 ### Example 2: Date-Based Filtering
 
-```typescript
-// Get all events from the last week
-const oneWeekAgo = new Date();
-oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+```python
+from datetime import datetime, timedelta
 
-for await (const page of client.event.getEventsPaginated({
-  autoPaginate: true,
-  cursorEnd: oneWeekAgo,
-  limit: 100
-})) {
-  processEvents(page.items);
-}
+one_week_ago = datetime.now() - timedelta(weeks=1)
+
+async with create_api_client() as client:
+    async for page in await client.event.getEventsPaginated(
+        auto_paginate=True, cursor_end=one_week_ago, limit=100
+    ):
+        process_events(page.items)
 ```
 
 ### Example 3: Early Termination
 
-```typescript
-let foundTarget = false;
-
-for await (const page of client.company.getCompanies({
-  autoPaginate: true,
-  perPage: 50
-})) {
-  for (const company of page.items) {
-    if (company.name === "Target Company") {
-      foundTarget = true;
-      break;
-    }
-  }
-  
-  if (foundTarget) {
-    break; // Exit the async iteration
-  }
-}
+```python
+async with create_api_client() as client:
+    found = False
+    async for page in await client.company.getCompanies(auto_paginate=True):
+        for company in page.items:
+            if company["name"] == "Target Company":
+                found = True
+                break
+        if found:
+            break
 ```
 
 ### Example 4: Regular (Non-Paginated) Call
 
-```typescript
-// Regular single-page request (backward compatible)
-const result = await client.article.getArticlesPaginated({
-  type: "last",
-  limit: 10
-  // No autoPaginate flag
-});
-
-console.log(`Items: ${result.items.length}`);
-console.log(`Next cursor: ${result.nextCursor}`);
-```
-
-## Type Safety
-
-The implementation is fully type-safe:
-
-- `autoPaginate` parameter is only available on paginated endpoints
-- Return types automatically adjust based on whether `autoPaginate` is used
-- `PageResult<K>` correctly infers item types from the endpoint
-
-```typescript
-// TypeScript knows this returns AsyncIterableIterator
-const iterator = client.article.getArticlesPaginated({
-  type: "last",
-  autoPaginate: true
-});
-
-for await (const page of iterator) {
-  // page.items is correctly typed as Article[]
-  // page.cursor is a string
-  page.items.forEach(article => {
-    console.log(article.title); // TypeScript knows about 'title'
-  });
-}
+```python
+async with create_api_client() as client:
+    result = await client.article.getArticlesPaginated(type="last", limit=10)
+    print(f"Items: {len(result['items'])}")
+    print(f"Next cursor: {result['nextCursor']}")
 ```
 
 ## Rate Limiting
@@ -216,7 +162,7 @@ Auto-pagination respects the existing rate limiting:
 
 - Default: 100 requests per minute (without API key)
 - With API key: 200 requests per minute
-- Configurable via `rateLimit` option
+- Configurable via `rate_limit` option
 
 Each page request counts toward the rate limit and is automatically queued and delayed as needed.
 
@@ -225,50 +171,33 @@ Each page request counts toward the rate limit and is automatically queued and d
 Auto-pagination stops when any of the following conditions is met:
 
 1. **No more data**: The API returns an empty or null `nextCursor`
-2. **Max pages reached**: The `maxPages` limit is hit
-3. **Cursor date exceeded**: When using `cursorEnd`, pagination stops when the next cursor's date is older than the specified date
+2. **Max pages reached**: The `max_pages` limit is hit
+3. **Cursor date exceeded**: When using `cursor_end`, pagination stops when the next cursor's date is older than the specified date
 
 ## Error Handling
 
-Errors during pagination will throw and stop the iteration:
+Errors during pagination will raise and stop the iteration:
 
-```typescript
-try {
-  for await (const page of client.battle.getBattles({
-    autoPaginate: true
-  })) {
-    // Process page
-  }
-} catch (error) {
-  console.error("Pagination failed:", error);
-}
+```python
+try:
+    async for page in await client.battle.getBattles(auto_paginate=True):
+        ...  # process page
+except Exception as exc:
+    print(f"Pagination failed: {exc}")
 ```
 
-## Migration Guide
+## Migration from TypeScript
 
-Existing code continues to work without changes:
-
-```typescript
-// Before (still works)
-const result = await client.article.getArticlesPaginated({
-  type: "last",
-  limit: 10,
-  cursor: someCursor
-});
-
-// New feature (opt-in)
-for await (const page of client.article.getArticlesPaginated({
-  type: "last",
-  limit: 10,
-  autoPaginate: true
-})) {
-  // ...
-}
-```
+| TypeScript | Python |
+|---|---|
+| `autoPaginate: true` | `auto_paginate=True` |
+| `maxPages: 5` | `max_pages=5` |
+| `cursorEnd: new Date(...)` | `cursor_end=datetime(...)` |
+| `for await (const page of ...)` | `async for page in await ...` |
 
 ## Implementation Notes
 
 - Cursor format: `"{date}|{id}"` where date is a parseable date string
 - Empty cursors, malformed cursors, or unparseable dates are handled gracefully
-- All 8 paginated endpoints follow the same response pattern: `{ items: T[], nextCursor: string }`
+- All 8 paginated endpoints follow the same response pattern: `{"items": [...], "nextCursor": "..."}`
 - The feature is zero-cost for non-paginated endpoints and backward compatible
