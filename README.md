@@ -1,80 +1,61 @@
-# WarEra tRPC Client
-This package provides a frontend + backend compatible tRPC communication layer for the WarEra.io API.
+# WarEra API Client (Python)
 
-# Why should I use this package?
-[WarEra.io](https://app.warera.io) is built on tRPC, and this client gives you a contract-aware integration layer instead of “raw HTTP calls”.
+A Python 3.12+ client for the [WarEra.io](https://app.warera.io) tRPC API with built-in rate limiting and automatic cursor-based pagination.
 
-You get typed procedures, batching, and rate-limit safety out of the box.
+## Features
 
-## What it can do
-- End-to-end TypeScript typing for inputs and responses.
-- Procedure discovery via IntelliSense (no manual endpoint hunting).
-- Automatic request batching to reduce network overhead and improve throughput.
-- Built-in rate limiting aligned to API requirements, so your app degrades gracefully under throttling.
-- Automatic URL length handling by splitting oversized requests and recombining results.
-- **Automatic cursor-based pagination** with type-safe async iterators. See [Auto-Pagination Guide](./docs/AUTO_PAGINATION.md).
-- Less boilerplate, fewer edge cases, faster iteration. 
+- Attribute-based procedure access — no manual endpoint strings.
+- Built-in rate limiting aligned to API requirements.
+- **Automatic cursor-based pagination** via async iterators.  See the [Auto-Pagination Guide](./docs/AUTO_PAGINATION.md).
+- Lightweight — only depends on [httpx](https://www.python-httpx.org/).
 
 ## Install
+
 ```bash
-npm i @wareraprojects/api
+pip install warera-api
 ```
 
 ## Usage
-```ts
-import { createAPIClient } from "@wareraprojects/api";
 
-async function main() {
-  const client = createAPIClient({
-    apiKey: process.env.WARERA_API_KEY
-  });
+```python
+import asyncio
+from warera_api import create_api_client
 
-  const allCountries = await client.country.getAllCountries();
-  const firstId = allCountries[0]._id;
+async def main():
+    async with create_api_client(api_key="YOUR_KEY") as client:
+        countries = await client.country.getAllCountries()
+        first_id = countries[0]["_id"]
 
-  // Multiple calls in the same tick can be batched into fewer HTTP requests.
-  const [countryById, government] = await Promise.all([
-    client.country.getCountryById({ countryId: firstId }),
-    client.government.getByCountryId({ countryId: firstId })
-  ]);
+        country = await client.country.getCountryById(countryId=first_id)
+        government = await client.government.getByCountryId(countryId=first_id)
 
-  console.log("Country details:", countryById);
-  console.log("Government:", government);
-}
+        print("Country:", country)
+        print("Government:", government)
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+asyncio.run(main())
 ```
 
 ## Auto-Pagination
 
-For endpoints that support cursor-based pagination, use the `autoPaginate` flag to automatically iterate through all pages:
+For endpoints that support cursor-based pagination, pass `auto_paginate=True` to receive an async iterator of pages:
 
-```ts
-import { createAPIClient } from "@wareraprojects/api";
+```python
+import asyncio
+from warera_api import create_api_client
 
-async function main() {
-  const client = createAPIClient({
-    apiKey: process.env.WARERA_API_KEY
-  });
+async def main():
+    async with create_api_client(api_key="YOUR_KEY") as client:
+        async for page in await client.article.getArticlesPaginated(
+            type="last",
+            limit=50,
+            auto_paginate=True,
+            max_pages=20,
+        ):
+            print(f"Processing {len(page.items)} articles")
+            for article in page.items:
+                print(f"- {article['title']}")
 
-  // Automatically paginate through all articles
-  for await (const page of client.article.getArticlesPaginated({
-    type: "last",
-    limit: 50,
-    autoPaginate: true,
-    maxPages: 20  // Optional: limit to 20 pages
-  })) {
-    console.log(`Processing ${page.items.length} articles`);
-    page.items.forEach(article => {
-      console.log(`- ${article.title}`);
-    });
-  }
-}
-
-main().catch(console.error);
+asyncio.run(main())
 ```
 
 See the [Auto-Pagination Guide](./docs/AUTO_PAGINATION.md) for more details and advanced usage patterns.
@@ -82,7 +63,7 @@ See the [Auto-Pagination Guide](./docs/AUTO_PAGINATION.md) for more details and 
 ---
 
 Found an issue?
-Open up a ticket here: https://github.com/WarEraProjects/TRPC/issues
+Open a ticket here: https://github.com/WarEraProjects/TRPC/issues
 
 ---
 
